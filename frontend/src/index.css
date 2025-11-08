@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+/* ✅ Tailwind v4 native theme — no tailwind.config.js needed */
+@theme {
+  --color-background: #0A0A0A;
+  --color-card: #111111;
+  --color-accent: #FF204E;
+  --color-secondary: #A0153E;
+  --color-text: #E6E6E6;
+  --color-success: #00C96D;
+  --color-warning: #FFB800;
+
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow-x: hidden; /* ✅ prevents horizontal scroll */
+}
+
+@keyframes ecg-pulse {
+  0% {
+    stroke-dashoffset: 200;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-ecg-pulse {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: ecg-pulse 1.25s linear infinite;
+}
