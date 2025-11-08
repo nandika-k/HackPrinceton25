@@ -20,6 +20,8 @@ scenario_name/
 - `cardiac_arrest/` - Cardiac arrest emergency procedures
 - `choking/` - Choking emergency procedures
 - `heart_attack/` - Heart attack emergency procedures
+- `arrhythmias/` - Heart rhythm problems (arrhythmias) emergency procedures
+- `angina/` - Angina attack first aid procedures
 
 ## Adding New Scenarios
 
