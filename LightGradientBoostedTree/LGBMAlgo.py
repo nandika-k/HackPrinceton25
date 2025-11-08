@@ -66,7 +66,21 @@ def extract_accel(accel_xyz, fs):
     fs: sampling frequency in Hz
     """
     a = np.asarray(accel_xyz, dtype=float)
-    if a.ndim != 2 or a.shape[0] == 0:
+    # Handle different input shapes
+    if a.ndim == 1:
+        # If 1D, try to reshape to (N, 3) if length is divisible by 3
+        if len(a) % 3 == 0:
+            a = a.reshape(-1, 3)
+        else:
+            return {
+                "accel_mean": 0.0,
+                "accel_std": 0.0,
+                "accel_max": 0.0,
+                "peaks_per_sec": 0.0,
+                "stillness_duration": 0.0,
+                "post_impact_still_flag": 0.0,
+            }
+    if a.ndim != 2 or a.shape[0] == 0 or a.shape[1] != 3:
         return {
             "accel_mean": 0.0,
             "accel_std": 0.0,
@@ -120,12 +134,16 @@ def sliding_windows(sig_len, window_sec, step_sec, fs):
 
 
 #synthetic code scenario
-def simulate_window(window_sec=20, fs_ecg=5, fs_accel=50):
+def simulate_window(window_sec=20, fs_ecg=5, fs_accel=50, rng=None):
     """
     Creates one synthetic training window (ECG + accel).
     Returns (ecg_signal, accel_xyz, label, scenario_str)
     """
-    scen = np.random.choice(
+    #use rng, random number generator, to ensure reproducibility with same seed
+    #if rng is not provided, use np.random as default
+    if rng is None:
+        rng = np.random
+    scen = rng.choice(
         ["normal", "run", "trip", "fall_unconscious", "collapse", "panic"],
         p=[0.25, 0.2, 0.15, 0.15, 0.1, 0.15]
     )
@@ -136,22 +154,22 @@ def simulate_window(window_sec=20, fs_ecg=5, fs_accel=50):
 
     if scen == "normal":
         hr_base = 70
-        hr = hr_base + 3 * np.random.randn(n_ecg)
+        hr = hr_base + 3 * rng.randn(n_ecg)
     elif scen in ["run", "trip"]:
         hr_base = 120
-        hr = hr_base + 5 * np.random.randn(n_ecg)
+        hr = hr_base + 5 * rng.randn(n_ecg)
     elif scen in ["fall_unconscious", "collapse"]:
-        hr = 110 + 10 * np.random.randn(n_ecg)
+        hr = 110 + 10 * rng.randn(n_ecg)
         hr -= np.linspace(0, 30, n_ecg)  # drop towards end
     elif scen == "panic":
-        hr = 100 + 15 * np.sin(0.5 * t_ecg) + 10 * np.random.randn(n_ecg)
+        hr = 100 + 15 * np.sin(0.5 * t_ecg) + 10 * rng.randn(n_ecg)
     else:
-        hr = 80 + 5 * np.random.randn(n_ecg)
+        hr = 80 + 5 * rng.randn(n_ecg)
 
     # Accel signal
     n_accel = window_sec * fs_accel
     t_accel = np.linspace(0, window_sec, n_accel)
-    accel = 0.1 * np.random.randn(n_accel, 3)  # base noise
+    accel = 0.1 * rng.randn(n_accel, 3)  # base noise
 
     if scen == "normal":
         accel += 0.2 * np.sin(2 * np.pi * 1.0 * t_accel)[:, None]
@@ -170,20 +188,22 @@ def simulate_window(window_sec=20, fs_ecg=5, fs_accel=50):
         accel[:cut] += 0.3 * np.sin(2 * np.pi * 1.0 * t_accel[:cut])[:, None]
         accel[cut:] *= 0.05
     elif scen == "panic":
-        accel += 0.3 * np.random.randn(n_accel, 3)
+        accel += 0.3 * rng.randn(n_accel, 3)
 
     label = int(scen in ["fall_unconscious", "collapse", "panic"])
     return hr, accel, label, scen
 
 
-def build_synthetic_dataset(n_samples=1000, window_sec=20, fs_ecg=5, fs_accel=50):
+def build_synthetic_dataset(n_samples=1000, window_sec=20, fs_ecg=5, fs_accel=50, random_seed=42):
     """
     Build synthetic feature dataframe using your old generator.
     """
     rows = []
     labels = []
-    for _ in range(n_samples):
-        hr, accel, y, scen = simulate_window(window_sec, fs_ecg, fs_accel)
+    for i in range(n_samples):
+        # Create a new random state for each sample to ensure reproducibility
+        sample_rng = np.random.RandomState(random_seed + i)
+        hr, accel, y, scen = simulate_window(window_sec, fs_ecg, fs_accel, rng=sample_rng)
         f_ecg = extract_ecg(hr, fs_ecg)
         f_acc = extract_accel(accel, fs_accel)
         row = {**f_ecg, **f_acc, "scenario": f"SYN_{scen}"}
@@ -206,10 +226,16 @@ def load_hifd_records(data_root):
 
     csv_paths = glob.glob(os.path.join(data_root, "*.csv"))
     for path in csv_paths:
-        df = pd.read_csv(path)
+        #error handling
+        try:
+            df = pd.read_csv(path)
+        except Exception as e:
+            print(f"WARNING: Failed to read {path}: {e}")
+            continue
 
         # Expect columns: hr, ax, ay, az (adjust if needed)
         if not {"hr", "ax", "ay", "az"}.issubset(df.columns):
+            print(f"WARNING: Missing required columns in {path}")
             continue
 
         hr = df["hr"].values
@@ -288,8 +314,13 @@ def load_sisfall_segments(data_root):
 
     csv_paths = glob.glob(os.path.join(data_root, "*.csv"))
     for path in csv_paths:
-        df = pd.read_csv(path)
+        try:
+            df = pd.read_csv(path)
+        except Exception as e:
+            print(f"WARNING: Failed to read {path}: {e}")
+            continue
         if not {"ax", "ay", "az"}.issubset(df.columns):
+            print(f"WARNING: Missing required columns in {path}")
             continue
 
         accel = df[["ax", "ay", "az"]].values
@@ -356,12 +387,19 @@ def load_ecg_mitbih_rows(data_root):
     train_path = os.path.join(data_root, "mitbih_train.csv")
     test_path = os.path.join(data_root, "mitbih_test.csv")
 
+    #error handling
     if os.path.isfile(train_path):
-        df_train = pd.read_csv(train_path, header=None)
-        records.append(df_train)
+        try:
+            df_train = pd.read_csv(train_path, header=None)
+            records.append(df_train)
+        except Exception as e:
+            print(f"WARNING: Failed to read {train_path}: {e}")
     if os.path.isfile(test_path):
-        df_test = pd.read_csv(test_path, header=None)
-        records.append(df_test)
+        try:
+            df_test = pd.read_csv(test_path, header=None)
+            records.append(df_test)
+        except Exception as e:
+            print(f"WARNING: Failed to read {test_path}: {e}")
 
     if not records:
         return []
@@ -459,17 +497,39 @@ if __name__ == "__main__":
     feature_cols = [c for c in df.columns if c not in ["label", "scenario"]]
     X = df[feature_cols].values
     y = df["label"].values
+    
+    # Check for NaN/inf values
+    if np.isnan(X).any() or np.isinf(X).any():
+        print("WARNING: Found NaN or Inf values in features. Filling NaN with 0 and Inf with large finite values.")
+        X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
+    
+    # Validate feature consistency
+    print(f"Feature columns: {feature_cols}")
+    print(f"Feature matrix shape: {X.shape}")
+    unique_labels, label_counts = np.unique(y, return_counts=True)
+    print(f"Label distribution: {dict(zip(unique_labels, label_counts))}")
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
-    )
+    # Check if stratification is possible (requires at least 2 samples per class in each split)
+    # For 20% test split, need at least 5 samples per class total (2 in test, 3 in train)
+    can_stratify = len(unique_labels) > 1 and np.min(label_counts) >= 5
+    
+    if can_stratify:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, stratify=y, random_state=42
+        )
+    else:
+        print("WARNING: Cannot stratify split (insufficient samples per class), using random split")
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
 
     # Baseline: Logistic Regression
     lr = LogisticRegression(max_iter=1000, class_weight="balanced")
     lr.fit(X_train, y_train)
+    y_pred_lr = lr.predict(X_test)
     y_scores_lr = lr.predict_proba(X_test)[:, 1]
     print("\nLogistic baseline report:")
-    print(classification_report(y_test, y_scores_lr > 0.5))
+    print(classification_report(y_test, y_pred_lr))
 
     # Gradient Boosted Trees (LightGBM)
     lgbm = lgb.LGBMClassifier(
@@ -480,10 +540,11 @@ if __name__ == "__main__":
         random_state=42,
     )
     lgbm.fit(X_train, y_train)
+    y_pred_lgbm = lgbm.predict(X_test)
     y_scores_lgbm = lgbm.predict_proba(X_test)[:, 1]
 
-    print("LightGBM report (threshold 0.5):")
-    print(classification_report(y_test, y_scores_lgbm > 0.5))
+    print("LightGBM report:")
+    print(classification_report(y_test, y_pred_lgbm))
 
     # Precision-recall summary
     ap_lr = average_precision_score(y_test, y_scores_lr)
