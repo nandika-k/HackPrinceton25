@@ -38,14 +38,14 @@ def extract_ecg(ecg_signal, fs):
     hr_std = float(np.std(x))
     hr_range = float(np.max(x) - np.min(x))
 
-    # linear fitting model
+    # Linear trend: fit HR slope over time
     t = np.arange(len(x)) / fs
     if len(t) > 1:
         slope = float(np.polyfit(t, x, 1)[0])
     else:
         slope = 0.0
 
-    #proxy std of first differences
+    # HRV proxy: std of first differences (heart rate variability indicator)
     if len(x) > 1:
         hrv_proxy = float(np.std(np.diff(x)))
     else:
@@ -96,12 +96,12 @@ def extract_accel(accel_xyz, fs):
     mag_std = float(np.std(mag))
     mag_max = float(np.max(mag))
 
-    #impact detection: peaks > threshold 
-    impact_thresh = float(np.percentile(mag, 90))  # rough
-    peaks = mag > impact_thresh
+    # SOS situation detection: peaks > threshold 
+    detection_threshold = float(np.percentile(mag, 90))
+    peaks = mag > detection_threshold
     peaks_per_sec = float(peaks.sum() / (len(mag) / fs + 1e-6))
 
-    # stillness: absolute value of a below small threshold after prev peak
+    # Stillness detection: low acceleration after impact peak (indicates potential unconsciousness)
     low_thresh = float(np.percentile(mag, 20))
     last_peak_idx = np.where(peaks)[0]
     if len(last_peak_idx) > 0:
@@ -133,14 +133,14 @@ def sliding_windows(sig_len, window_sec, step_sec, fs):
 
 
 
-#synthetic code scenario
+# Synthetic data generation: create realistic fall scenarios
 def simulate_window(window_sec=20, fs_ecg=5, fs_accel=50, rng=None):
     """
     Creates one synthetic training window (ECG + accel).
     Returns (ecg_signal, accel_xyz, label, scenario_str)
     """
-    #use rng, random number generator, to ensure reproducibility with same seed
-    #if rng is not provided, use np.random as default
+    # Use rng (random number generator) to ensure reproducibility with same seed
+    # If rng is not provided, use np.random as default
     if rng is None:
         rng = np.random
     scen = rng.choice(
@@ -214,7 +214,7 @@ def build_synthetic_dataset(n_samples=1000, window_sec=20, fs_ecg=5, fs_accel=50
     return df
 
 
-# dataset block assumes preprocessed CSVs locally.
+# Dataset loading: assumes preprocessed CSVs locally
 def load_hifd_records(data_root):
     """
     Scan data_root for CSVs with columns: 'hr', 'ax', 'ay', 'az'
@@ -379,7 +379,7 @@ def build_from_sisfall(data_root, window_sec=20, step_sec=10):
         df["label"] = labels
     return df
 
-#ecg dataset
+# ECG MIT-BIH dataset loading
 def load_ecg_mitbih_rows(data_root):
     """    Expects last column as label (0 = normal, >0 = arrhythmia).
     """
@@ -455,7 +455,7 @@ def build_from_ecg_mitbih(data_root):
     return df
 
 
-#Training
+# Training and evaluation
 if __name__ == "__main__":
     dfs = []
 
