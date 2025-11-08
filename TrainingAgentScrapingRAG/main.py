@@ -1,27 +1,62 @@
 """
-Main Entry Point
+Main entry point for testing the first-aid guidelines retrieval system.
 
-Entry point for the healthcare RAG system.
-Can be used to run the API server or initialize the RAG pipeline.
+This is an optional script for testing and demonstration purposes.
 """
 
-import uvicorn
-from api.main import app
-from config import Config
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from agent_interface import retrieve_guidelines
+from agent_interface.care_agent import get_available_scenarios
 
 
 def main():
     """
-    Main entry point for the application.
-    
-    Starts the FastAPI server for the RAG API.
+    Demonstrate the retrieval system functionality.
     """
-    uvicorn.run(
-        app,
-        host=Config.API_HOST,
-        port=Config.API_PORT,
-        log_level="info" if not Config.API_DEBUG else "debug"
-    )
+    print("=" * 60)
+    print("First-Aid Guidelines Retrieval System - Demo")
+    print("=" * 60)
+    print()
+    
+    # List available scenarios
+    print("Available scenarios:")
+    scenarios = get_available_scenarios()
+    for scenario in scenarios:
+        print(f"  - {scenario}")
+    print()
+    
+    # Retrieve guidelines for cardiac arrest (adult)
+    print("Retrieving guidelines for: cardiac_arrest (adult)")
+    print("-" * 60)
+    guidelines = retrieve_guidelines(scenario="cardiac_arrest", age_group="adult")
+    
+    print(f"Text preview (first 200 chars):")
+    print(guidelines["text"][:200] + "...")
+    print()
+    
+    print(f"Images: {guidelines['images']}")
+    print()
+    
+    print(f"Metadata: {guidelines['metadata']}")
+    print()
+    
+    # Retrieve guidelines for choking (child)
+    print("Retrieving guidelines for: choking (child)")
+    print("-" * 60)
+    guidelines = retrieve_guidelines(scenario="choking", age_group="child")
+    
+    print(f"Text preview (first 200 chars):")
+    print(guidelines["text"][:200] + "...")
+    print()
+    
+    print("=" * 60)
+    print("Demo complete!")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

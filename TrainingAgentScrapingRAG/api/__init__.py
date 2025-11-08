@@ -1,10 +1,12 @@
 """
-API Module
+API module for serving first-aid guidelines via FastAPI.
 
-This module contains the FastAPI application for serving RAG retrieval requests.
+This module provides REST API endpoints for accessing the first-aid
+guidelines retrieval system. Useful for integration with web applications
+or external services.
 """
 
-from .main import app, router
+from .endpoints import app, router
 
-__all__ = ['app', 'router']
+__all__ = ["app", "router"]
 

@@ -1,219 +1,185 @@
-# Healthcare RAG System - Cardiac Emergency First-Aid Guide
+# First-Aid Guidelines Retrieval System
 
-A modular Retrieval-Augmented Generation (RAG) framework for providing first-aid guidance for cardiac emergencies.
+A Python framework for scenario-based retrieval of curated first-aid guidance documents, designed for healthcare AI agents providing first-aid guidance for cardiac emergencies and other medical situations.
+
+## Overview
+
+This system provides a **scenario-based retrieval system** using only curated documents, with **no embeddings or semantic search**. All retrieval is based on direct file access organized by scenario and age group.
 
 ## Project Structure
 
 ```
-.
-├── ingestion/          # Data ingestion modules
+TrainingAgentScrapingRAG/
+├── knowledge_base/          # Curated text and images, organized by scenario
+│   ├── cardiac_arrest/
+│   │   ├── adult/
+│   │   │   ├── guidelines.txt
+│   │   │   └── images/
+│   │   └── child/
+│   │       ├── guidelines.txt
+│   │       └── images/
+│   └── choking/
+│       ├── adult/
+│       └── child/
+├── retrieval/               # Functions to fetch instructions based on scenario
 │   ├── __init__.py
-│   └── ingestor.py    # Data ingestion placeholders
-├── preprocessing/      # Text preprocessing and chunking
+│   └── knowledge_loader.py
+├── agent_interface/         # Methods for the Care Agent to query guidelines
 │   ├── __init__.py
-│   ├── preprocessor.py  # Text cleaning and preprocessing
-│   └── chunker.py      # Text chunking strategies
-├── embedding/          # Vector embedding generation
+│   └── care_agent.py
+├── api/                     # Optional FastAPI scaffold to serve retrieval functions
 │   ├── __init__.py
-│   └── embedder.py    # Embedding model interface
-├── vector_store/       # Vector database operations
-│   ├── __init__.py
-│   └── vector_db.py   # Vector storage and search
-├── retrieval/          # Retrieval logic
-│   ├── __init__.py
-│   └── retriever.py   # RAG retrieval interface
-├── api/                # FastAPI application
-│   ├── __init__.py
-│   └── main.py        # API endpoints
-├── config.py           # Configuration settings
-├── pipeline.py         # Complete RAG pipeline
-├── main.py             # Entry point for API server
-├── requirements.txt    # Python dependencies
-└── README.md          # This file
+│   └── endpoints.py
+├── requirements.txt
+└── README.md
 ```
 
 ## Features
 
-- **Modular Architecture**: Separated concerns for easy integration and modification
-- **Placeholder Methods**: All core methods are stubbed with clear TODOs
-- **FastAPI Integration**: Ready-to-use API endpoints for the Care Agent
-- **Type Hints**: Full type annotations for better code clarity
-- **Documentation**: Comprehensive docstrings and comments
+- **Scenario-based retrieval**: Direct access to guidelines by scenario name and age group
+- **No embeddings or semantic search**: Pure file-based retrieval from curated documents
+- **Modular design**: Easy to extend with new scenarios and age groups
+- **Agent-friendly API**: Simple function calls for the Care Agent
+- **Optional REST API**: FastAPI endpoints for web integration
 
-## Setup
+## Installation
 
-### 1. Install Dependencies
-
+1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment Variables (Optional)
+2. The knowledge base is already populated with sample scenarios (cardiac_arrest, choking).
 
-Create a `.env` file:
+## Quick Start
 
-```env
-EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
-EMBEDDING_DIM=384
-CHUNK_SIZE=500
-CHUNK_OVERLAP=50
-VECTOR_DB_TYPE=faiss
-LLM_PROVIDER=openai
-LLM_MODEL_NAME=gpt-4
-LLM_API_KEY=your_api_key_here
+### Basic Usage (Python)
+
+```python
+from agent_interface import retrieve_guidelines
+
+# Retrieve guidelines for cardiac arrest in adults
+guidelines = retrieve_guidelines(scenario="cardiac_arrest", age_group="adult")
+
+print(guidelines["text"])        # Text content
+print(guidelines["images"])      # List of image paths
+print(guidelines["metadata"])    # Metadata dictionary
 ```
 
-### 3. Run the API Server
+### List Available Scenarios
 
+```python
+from agent_interface.care_agent import get_available_scenarios
+
+scenarios = get_available_scenarios()
+print(scenarios)  # ['cardiac_arrest', 'choking']
+```
+
+### Using the API (Optional)
+
+1. Start the FastAPI server:
 ```bash
-python main.py
+uvicorn api.endpoints:app --reload
 ```
 
-The API will be available at `http://localhost:8000`
+2. Access the API:
+- API Docs: http://localhost:8000/docs
+- Get guidelines: `GET /api/v1/guidelines/cardiac_arrest?age_group=adult`
+- List scenarios: `GET /api/v1/scenarios`
 
-## API Endpoints
+## Core Functions
 
-### Health Check
-```
-GET /health
-```
+### `retrieve_guidelines(scenario: str, age_group: str) -> Dict`
 
-### Retrieve Guidelines
-```
-POST /guidelines
-Body: {
-    "condition": "cardiac arrest",
-    "top_k": 5
-}
-```
+Main function for the Care Agent to retrieve guidelines. Returns a dictionary with:
+- `text`: Text content of the guidelines
+- `images`: List of image file paths
+- `metadata`: Metadata dictionary (scenario, age_group, source, etc.)
 
-### General Retrieval
-```
-POST /retrieve
-Body: {
-    "query": "What to do for chest pain?",
-    "top_k": 5
-}
-```
+### `get_available_scenarios() -> List[str]`
 
-### RAG Generation
-```
-POST /rag/generate
-Body: {
-    "query": "How to perform CPR?",
-    "condition": "cardiac arrest"
-}
-```
+Returns a list of all available emergency scenarios in the knowledge base.
 
-### Database Statistics
-```
-GET /stats
-```
+### `add_new_scenario(scenario_name: str, ...) -> bool`
 
-## Usage
+Creates directory structure for a new scenario. Placeholder for adding new official guidance.
 
-### Running the Pipeline
+### `load_knowledge_base() -> Dict`
 
-To ingest and index healthcare data:
+Loads all knowledge base content into a structured dictionary.
+
+## Adding New Scenarios
+
+### Method 1: Using the function
 
 ```python
-from pipeline import RAGPipeline
+from retrieval.knowledge_loader import add_new_scenario
 
-pipeline = RAGPipeline()
-data_sources = ["data/guidelines.txt"]
-pipeline.run_pipeline(data_sources)
+add_new_scenario("stroke")
+# Creates: knowledge_base/stroke/adult/guidelines.txt
+#         knowledge_base/stroke/child/guidelines.txt
 ```
 
-### Using the Retriever
+### Method 2: Manual creation
 
-```python
-from retrieval.retriever import Retriever
-from embedding.embedder import Embedder
-from vector_store.vector_db import VectorDB
-
-embedder = Embedder()
-vector_db = VectorDB()
-retriever = Retriever(embedder, vector_db)
-
-guidelines = retriever.get_guidelines("cardiac arrest", top_k=5)
+1. Create directory structure:
+```
+knowledge_base/
+└── new_scenario/
+    ├── adult/
+    │   ├── guidelines.txt
+    │   └── images/
+    └── child/
+        ├── guidelines.txt
+        └── images/
 ```
 
-## Implementation TODOs
-
-### Data Ingestion
-- [ ] Implement actual data reading from files (PDF, TXT, JSON)
-- [ ] Add support for medical databases
-- [ ] Implement data validation and sanitization
-
-### Preprocessing
-- [ ] Add medical NER (Named Entity Recognition)
-- [ ] Implement medical term normalization
-- [ ] Add sentence-aware chunking
-
-### Embeddings
-- [ ] Integrate actual embedding models (sentence-transformers, OpenAI)
-- [ ] Add support for medical-specific embedding models
-- [ ] Implement embedding caching
-
-### Vector Store
-- [ ] Integrate actual vector database (FAISS, Pinecone, ChromaDB)
-- [ ] Implement index persistence
-- [ ] Add metadata filtering
-- [ ] Implement hybrid search
-
-### Retrieval
-- [ ] Add query expansion for medical terms
-- [ ] Implement reranking
-- [ ] Add support for multi-query retrieval
-
-### LLM Integration
-- [ ] Integrate with LLM provider (OpenAI, Anthropic)
-- [ ] Format prompts with retrieved context
-- [ ] Add citation tracking
-- [ ] Implement streaming responses
+2. Add content to `guidelines.txt` files
+3. Add images to `images/` directories (optional)
 
 ## Integration with Care Agent
 
-The main endpoint for the Care Agent is:
+The Care Agent should use the `retrieve_guidelines()` function:
 
 ```python
-POST /guidelines
-{
-    "condition": "cardiac arrest",
-    "top_k": 5
-}
+from agent_interface import retrieve_guidelines
+
+# In your Care Agent code
+def handle_emergency(emergency_type: str, patient_age: str):
+    age_group = "adult" if patient_age >= 18 else "child"
+    guidelines = retrieve_guidelines(
+        scenario=emergency_type,
+        age_group=age_group
+    )
+    
+    # Use guidelines["text"] for instructions
+    # Use guidelines["images"] for visual aids
+    return guidelines
 ```
 
-This returns relevant first-aid guidelines that can be used by the Care Agent to provide guidance to users.
+## Constraints
 
-## Development
+- **No embeddings**: This system does not use vector embeddings or semantic search
+- **No automatic scraping**: All content must be manually curated
+- **Scenario-based only**: Retrieval is based on exact scenario name matching
+- **Curated documents only**: All guidelines must be added manually to the knowledge base
 
-### Adding New Data Sources
+## TODO / Future Enhancements
 
-1. Extend `DataIngestor` in `ingestion/ingestor.py`
-2. Implement the specific ingestion method
-3. Update the pipeline to use the new source
-
-### Adding New Chunking Strategies
-
-1. Extend `TextChunker` in `preprocessing/chunker.py`
-2. Implement the new chunking method
-3. Update configuration to use the new strategy
-
-### Customizing Embeddings
-
-1. Update `Embedder` in `embedding/embedder.py`
-2. Load your preferred embedding model
-3. Update configuration with model details
+- [ ] Add input validation and error handling
+- [ ] Add logging for agent queries
+- [ ] Implement file copying in `add_new_scenario()`
+- [ ] Add support for metadata.json files
+- [ ] Add caching mechanism for performance
+- [ ] Add support for scenario aliases
+- [ ] Add API authentication if needed
+- [ ] Add rate limiting for API endpoints
 
 ## License
 
-This project is created for HackPrinceton 2025.
+[Add your license here]
 
-## Notes
+## Contributing
 
-- All methods are placeholders and require actual implementation
-- The system is designed for easy integration with healthcare data
-- Focus on cardiac emergencies, but framework is extensible to other conditions
-- All TODOs are marked in the code for easy identification
+[Add contributing guidelines here]
 
