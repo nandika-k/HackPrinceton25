@@ -1,0 +1,17 @@
+# OpenAI Agent Dependencies
+openai>=1.0.0
+
+# Fall Detection Model
+scikit-learn>=1.3.0
+lightgbm>=4.0.0
+joblib>=1.3.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Optional: Twilio (for emergency services)
+# twilio>=8.10.0
+
+# Optional: Sensor libraries (add as needed)
+# pyserial>=3.5  # For serial sensors
+# bluepy>=1.3.0  # For Bluetooth sensors
+
