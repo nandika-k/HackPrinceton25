@@ -1,0 +1,3 @@
+[submodule "WEDA-FALL-data-source"]
+	path = WEDA-FALL-data-source
+	url = https://github.com/joaojtmarques/WEDA-FALL
