@@ -9,20 +9,16 @@ from sklearn.metrics import classification_report, average_precision_score
 import lightgbm as lgb
 import joblib
 
-HIFD_ROOT   = "data/hifd"          
-SISFALL_ROOT = "data/sisfall"      
-ECG_ROOT    = "data/ecg_mitbih"    
+SISFALL = "data/sisfall"      
+ECG    = "data/ecg_mitbih"    
 
-# Default sampling rates (adjust to match preprocessing)
-FS_HR_DEFAULT     = 125    # 125 Hz HR (or HR-derived samples)
-FS_ACCEL_DEFAULT  = 125   #125 Hz accelerometer
+# Default sampling rates, fs: sampling freq (Hz)
+HR_FS     = 125    # 125 Hz HR (This is for SpO2 sensor)
+ACC_FS  = 125   #125 Hz accelerometer
 
 #Feature extraction block
 def extract_ecg(ecg_signal, fs):
-    """
-    ecg_signal: 1D numpy array, length~window_sec * fs
-    fs: sampling frequency (Hz)
-    For MVP: treat ecg_signal as filtered RR proxy, converting visual to numerical
+    """For MVP: treat ecg_signal as filtered RR proxy, converting visual to numerical. 1D numpy array means l~window-sec*fs
     """
     x = np.asarray(ecg_signal, dtype=float)
     if x.size == 0:
@@ -59,54 +55,52 @@ def extract_ecg(ecg_signal, fs):
         "hrv_proxy": hrv_proxy,
     }
 
-
-def extract_accel(accel_xyz, fs):
+def extract_acc(acc_xyz, fs):
     """
-    accel_xyz: (N, 3) array of ax, ay, az
+    acc_xyz: (N, 3) array of ax, ay, az
     fs: sampling frequency in Hz
     """
-    a = np.asarray(accel_xyz, dtype=float)
+    a = np.asarray(acc_xyz, dtype=float)
     if a.ndim != 2 or a.shape[0] == 0:
         return {
-            "accel_mean": 0.0,
-            "accel_std": 0.0,
-            "accel_max": 0.0,
-            "peaks_per_sec": 0.0,
+            "acc_mean": 0.0,
+            "acc_std": 0.0,
+            "acc_max": 0.0,
+            "peak_per_sec": 0.0,
             "stillness_duration": 0.0,
             "post_impact_still_flag": 0.0,
         }
 
-    mag = np.linalg.norm(a, axis=1)
+    value = np.linalg.norm(a, axis=1)
+    value_mean = float(np.mean(value))
+    value_std = float(np.std(value))
+    value_max = float(np.max(value))
 
-    mag_mean = float(np.mean(mag))
-    mag_std = float(np.std(mag))
-    mag_max = float(np.max(mag))
-
-    #impact detection: peaks > threshold 
-    impact_thresh = float(np.percentile(mag, 90))  # rough
-    peaks = mag > impact_thresh
-    peaks_per_sec = float(peaks.sum() / (len(mag) / fs + 1e-6))
+    # SOS situation detection: peaks > threshold 
+    detection_threshold = float(np.percentile(value, 90))  
+    peaks = value > detection_threshold
+    peak_per_sec = float(peaks.sum()/(len(value) / fs + 1e-6))
 
     # stillness: absolute value of a below small threshold after prev peak
-    low_thresh = float(np.percentile(mag, 20))
-    last_peak_idx = np.where(peaks)[0]
-    if len(last_peak_idx) > 0:
-        last_peak_idx = last_peak_idx[-1]
-        post_segment = mag[last_peak_idx:]
+    low_thresh = float(np.percentile(value, 20))
+    prev_peak= np.where(peaks)[0]
+    if len(prev_peak) > 0:
+        prev_peak = prev_peak[-1]
+        post_segment = value[prev_peak:]
         still_mask = post_segment < low_thresh
         stillness_duration = float(still_mask.sum() / fs)
-        post_impact_still_flag = float(stillness_duration > 3.0)  # >3s still = potentially concerning
+        after_impact_still_flag = float(stillness_duration > 3.0)  # >3s still = potentially concerning
     else:
         stillness_duration = 0.0
-        post_impact_still_flag = 0.0
+        after_impact_still_flag = 0.0
 
     return {
-        "accel_mean": mag_mean,
-        "accel_std": mag_std,
-        "accel_max": mag_max,
-        "peaks_per_sec": peaks_per_sec,
+        "acc_mean": value_mean,
+        "acc_std": value_std,
+        "acc_max": value_max,
+        "peak_per_sec": peak_per_sec,
         "stillness_duration": stillness_duration,
-        "post_impact_still_flag": post_impact_still_flag,
+        "after_impact_still_flag": after_impact_still_flag,
     }
 
 
@@ -120,10 +114,10 @@ def sliding_windows(sig_len, window_sec, step_sec, fs):
 
 
 #synthetic code scenario
-def simulate_window(window_sec=20, fs_ecg=5, fs_accel=50):
+def simulate_window(window_sec=20, fs_ecg=5, fs_acc=50):
     """
-    Creates one synthetic training window (ECG + accel).
-    Returns (ecg_signal, accel_xyz, label, scenario_str)
+    Creates one synthetic training window (ECG + acc).
+    Returns (ecg_signal, acc_xyz, label, scenario_str)
     """
     scen = np.random.choice(
         ["normal", "run", "trip", "fall_unconscious", "collapse", "panic"],
@@ -148,44 +142,44 @@ def simulate_window(window_sec=20, fs_ecg=5, fs_accel=50):
     else:
         hr = 80 + 5 * np.random.randn(n_ecg)
 
-    # Accel signal
-    n_accel = window_sec * fs_accel
-    t_accel = np.linspace(0, window_sec, n_accel)
-    accel = 0.1 * np.random.randn(n_accel, 3)  # base noise
+    # Acc signal
+    n_acc = window_sec * fs_acc
+    t_acc = np.linspace(0, window_sec, n_acc)
+    acc = 0.1 * np.random.randn(n_acc, 3)  # base noise
 
     if scen == "normal":
-        accel += 0.2 * np.sin(2 * np.pi * 1.0 * t_accel)[:, None]
+        acc += 0.2 * np.sin(2 * np.pi * 1.0 * t_acc)[:, None]
     elif scen == "run":
-        accel += 0.7 * np.sign(np.sin(2 * np.pi * 2.0 * t_accel))[:, None]
+        acc += 0.7 * np.sign(np.sin(2 * np.pi * 2.0 * t_acc))[:, None]
     elif scen == "trip":
-        impact_idx = int(0.5 * n_accel)
-        accel[impact_idx:impact_idx+5] += 4.0
-        accel += 0.5 * np.sin(2 * np.pi * 1.5 * t_accel)[:, None]
+        impact_idx = int(0.5 * n_acc)
+        acc[impact_idx:impact_idx+5] += 4.0
+        acc += 0.5 * np.sin(2 * np.pi * 1.5 * t_acc)[:, None]
     elif scen == "fall_unconscious":
-        impact_idx = int(0.5 * n_accel)
-        accel[impact_idx:impact_idx+5] += 5.0
-        accel[impact_idx+50:] *= 0.05
+        impact_idx = int(0.5 * n_acc)
+        acc[impact_idx:impact_idx+5] += 5.0
+        acc[impact_idx+50:] *= 0.05
     elif scen == "collapse":
-        cut = int(0.3 * n_accel)
-        accel[:cut] += 0.3 * np.sin(2 * np.pi * 1.0 * t_accel[:cut])[:, None]
-        accel[cut:] *= 0.05
+        cut = int(0.3 * n_acc)
+        acc[:cut] += 0.3 * np.sin(2 * np.pi * 1.0 * t_acc[:cut])[:, None]
+        acc[cut:] *= 0.05
     elif scen == "panic":
-        accel += 0.3 * np.random.randn(n_accel, 3)
+        acc += 0.3 * np.random.randn(n_acc, 3)
 
     label = int(scen in ["fall_unconscious", "collapse", "panic"])
-    return hr, accel, label, scen
+    return hr, acc, label, scen
 
 
-def build_synthetic_dataset(n_samples=1000, window_sec=20, fs_ecg=5, fs_accel=50):
+def build_synthetic_dataset(n_samples=1000, window_sec=20, fs_ecg=5, fs_acc=50):
     """
     Build synthetic feature dataframe using your old generator.
     """
     rows = []
     labels = []
     for _ in range(n_samples):
-        hr, accel, y, scen = simulate_window(window_sec, fs_ecg, fs_accel)
+        hr, acc, y, scen = simulate_window(window_sec, fs_ecg, fs_acc)
         f_ecg = extract_ecg(hr, fs_ecg)
-        f_acc = extract_accel(accel, fs_accel)
+        f_acc = extract_acc(acc, fs_acc)
         row = {**f_ecg, **f_acc, "scenario": f"SYN_{scen}"}
         rows.append(row)
         labels.append(y)
@@ -195,91 +189,6 @@ def build_synthetic_dataset(n_samples=1000, window_sec=20, fs_ecg=5, fs_accel=50
 
 
 # dataset block assumes preprocessed CSVs locally.
-def load_hifd_records(data_root):
-    """
-    Scan data_root for CSVs with columns: 'hr', 'ax', 'ay', 'az'
-    Label is inferred from filename: filenames containing 'fall' or 'nearfall'.
-    """
-    records = []
-    if not os.path.isdir(data_root):
-        return records
-
-    csv_paths = glob.glob(os.path.join(data_root, "*.csv"))
-    for path in csv_paths:
-        df = pd.read_csv(path)
-
-        # Expect columns: hr, ax, ay, az (adjust if needed)
-        if not {"hr", "ax", "ay", "az"}.issubset(df.columns):
-            continue
-
-        hr = df["hr"].values
-        accel = df[["ax", "ay", "az"]].values
-
-        fname = os.path.basename(path).lower()
-        if "fall" in fname:
-            label_str = "fall"
-        elif "near" in fname:
-            label_str = "near-fall"
-        else:
-            label_str = "adl"
-
-        records.append({
-            "hr": hr,
-            "fs_hr": FS_HR_DEFAULT,
-            "accel": accel,
-            "fs_accel": FS_ACCEL_DEFAULT,
-            "label_str": label_str,
-        })
-
-    return records
-
-
-def build_from_hifd(data_root, window_sec=20, step_sec=10):
-    rows = []
-    labels = []
-
-    records = load_hifd_records(data_root)
-    for rec in records:
-        hr = rec["hr"]
-        fs_hr = rec["fs_hr"]
-        accel = rec["accel"]
-        fs_accel = rec["fs_accel"]
-        label_str = rec["label_str"]
-
-        n_hr = len(hr)
-        n_acc = len(accel)
-        total_sec = min(n_hr / fs_hr, n_acc / fs_accel)
-        if total_sec < window_sec:
-            continue
-
-        for start_hr, end_hr in sliding_windows(
-            int(total_sec * fs_hr), window_sec, step_sec, fs_hr
-        ):
-            t0 = start_hr / fs_hr
-            t1 = end_hr / fs_hr
-            start_acc = int(t0 * fs_accel)
-            end_acc = int(t1 * fs_accel)
-            if end_acc > n_acc:
-                break
-
-            hr_window = hr[start_hr:end_hr]
-            accel_window = accel[start_acc:end_acc]
-
-            f_ecg = extract_ecg(hr_window, fs_hr)
-            f_acc = extract_accel(accel_window, fs_accel)
-
-            label = 1 if label_str in ["fall", "near-fall"] else 0
-            scen = f"HIFD_{label_str}"
-
-            row = {**f_ecg, **f_acc, "scenario": scen}
-            rows.append(row)
-            labels.append(label)
-
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df["label"] = labels
-    return df
-
 
 def load_sisfall_segments(data_root):
     records = []
@@ -292,7 +201,7 @@ def load_sisfall_segments(data_root):
         if not {"ax", "ay", "az"}.issubset(df.columns):
             continue
 
-        accel = df[["ax", "ay", "az"]].values
+        acc = df[["ax", "ay", "az"]].values
         fname = os.path.basename(path).lower()
         if fname.startswith("f") or "fall" in fname:
             label_str = "FALL"
@@ -300,8 +209,8 @@ def load_sisfall_segments(data_root):
             label_str = "ADL"
 
         records.append({
-            "accel": accel,
-            "fs_accel": FS_ACCEL_DEFAULT,
+            "acc": acc,
+            "fs_acc": ACC_FS,
             "label_str": label_str,
         })
 
@@ -314,17 +223,17 @@ def build_from_sisfall(data_root, window_sec=20, step_sec=10):
 
     records = load_sisfall_segments(data_root)
     for rec in records:
-        accel = rec["accel"]
-        fs_accel = rec["fs_accel"]
+        acc = rec["acc"]
+        fs_acc = rec["fs_acc"]
         label_str = rec["label_str"]
-        n_acc = len(accel)
-        if n_acc < window_sec * fs_accel:
+        n_acc = len(acc)
+        if n_acc < window_sec * fs_acc:
             continue
 
         for start_acc, end_acc in sliding_windows(
-            n_acc, window_sec, step_sec, fs_accel
+            n_acc, window_sec, step_sec, fs_acc
         ):
-            accel_window = accel[start_acc:end_acc]
+            acc_window = acc[start_acc:end_acc]
 
             # Neutral ECG placeholders
             f_ecg = {
@@ -334,7 +243,7 @@ def build_from_sisfall(data_root, window_sec=20, step_sec=10):
                 "hr_slope": 0.0,
                 "hrv_proxy": 2.0,
             }
-            f_acc = extract_accel(accel_window, fs_accel)
+            f_acc = extract_acc(acc_window, fs_acc)
 
             label = 1 if label_str.lower().startswith("f") else 0
             scen = f"SisFall_{label_str}"
@@ -394,14 +303,14 @@ def build_from_ecg_mitbih(data_root):
         # treat whole row as one window
         f_ecg = extract_ecg(ecg, fs)
 
-        # neutral accel: assume resting body
+        # neutral acc: assume resting body
         f_acc = {
-            "accel_mean": 0.1,
-            "accel_std": 0.05,
-            "accel_max": 0.2,
-            "peaks_per_sec": 0.0,
+            "acc_mean": 0.1,
+            "acc_std": 0.05,
+            "acc_max": 0.2,
+            "peak_per_sec": 0.0,
             "stillness_duration": len(ecg) / fs,
-            "post_impact_still_flag": 0.0,
+            "after_impact_still_flag": 0.0,
         }
 
         label = 1 if label_str != "normal" else 0
@@ -421,16 +330,8 @@ def build_from_ecg_mitbih(data_root):
 if __name__ == "__main__":
     dfs = []
 
-    # HIFD
-    df_hifd = build_from_hifd(HIFD_ROOT, window_sec=20, step_sec=10)
-    if not df_hifd.empty:
-        print(f"HIFD samples: {len(df_hifd)}")
-        dfs.append(df_hifd)
-    else:
-        print("WARNING: No HIFD data loaded (check CSV).")
-
     # SisFall
-    df_sisfall = build_from_sisfall(SISFALL_ROOT, window_sec=20, step_sec=10)
+    df_sisfall = build_from_sisfall(SISFALL, window_sec=20, step_sec=10)
     if not df_sisfall.empty:
         print(f"SisFall samples: {len(df_sisfall)}")
         dfs.append(df_sisfall)
@@ -438,7 +339,7 @@ if __name__ == "__main__":
         print("WARNING: No SisFall data loaded (check CSV).")
 
     # ECG MITBIH
-    df_ecg = build_from_ecg_mitbih(ECG_ROOT)
+    df_ecg = build_from_ecg_mitbih(ECG)
     if not df_ecg.empty:
         print(f"ECG MITBIH samples: {len(df_ecg)}")
         dfs.append(df_ecg)
