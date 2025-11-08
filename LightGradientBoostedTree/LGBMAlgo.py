@@ -11,7 +11,8 @@ import joblib
 
 HIFD_ROOT   = "data/hifd"          
 SISFALL_ROOT = "data/sisfall"      
-ECG_ROOT    = "data/ecg_mitbih"    
+ECG_ROOT    = "data/ecg_mitbih"
+WEDA_ROOT   = "WEDA-FALL-data-source/dataset/125Hz"    
 
 # Default sampling rates (adjust to match preprocessing)
 FS_HR_DEFAULT     = 125    # 125 Hz HR (or HR-derived samples)
@@ -482,6 +483,21 @@ if __name__ == "__main__":
         dfs.append(df_ecg)
     else:
         print("WARNING: No ECG MITBIH data loaded (check CSV).")
+
+    # WEDA-FALL (if available)
+    try:
+        from load_weda import build_from_weda
+        df_weda = build_from_weda(WEDA_ROOT, window_sec=20, step_sec=10, 
+                                  sensor_type='accel', target_fs=125.0)
+        if not df_weda.empty:
+            print(f"WEDA-FALL samples: {len(df_weda)}")
+            dfs.append(df_weda)
+        else:
+            print("WARNING: No WEDA-FALL data loaded (run weda_resample.py first to convert to 125Hz).")
+    except ImportError:
+        print("WARNING: WEDA-FALL loader not available (load_weda.py not found).")
+    except Exception as e:
+        print(f"WARNING: Failed to load WEDA-FALL data: {e}")
 
     # Synthetic fallback
     df_synth = build_synthetic_dataset(n_samples=1000)
