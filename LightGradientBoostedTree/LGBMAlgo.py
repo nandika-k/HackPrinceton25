@@ -18,6 +18,10 @@ WEDA_ROOT   = "WEDA-FALL-data-source/dataset/125Hz"
 FS_HR_DEFAULT     = 125    # 125 Hz HR (or HR-derived samples)
 FS_ACCEL_DEFAULT  = 125   #125 Hz accelerometer
 
+# Aliases for newer naming convention
+HR_FS = FS_HR_DEFAULT
+ACC_FS = FS_ACCEL_DEFAULT
+
 #Feature extraction block
 def extract_ecg(ecg_signal, fs):
     """
@@ -123,6 +127,13 @@ def extract_accel(accel_xyz, fs):
         "stillness_duration": stillness_duration,
         "post_impact_still_flag": post_impact_still_flag,
     }
+
+
+def extract_acc(accel_xyz, fs):
+    """
+    Alias to maintain compatibility with modules importing extract_acc.
+    """
+    return extract_accel(accel_xyz, fs)
 
 
 def sliding_windows(sig_len, window_sec, step_sec, fs):
@@ -456,19 +467,18 @@ def build_from_ecg_mitbih(data_root):
     return df
 
 
+# WEDA loader import (placed after function definitions to avoid circular import issues)
+try:
+    from load_weda import build_from_weda
+except ImportError:
+    build_from_weda = None
+
+
 # Training and evaluation
 if __name__ == "__main__":
     dfs = []
 
-    # HIFD
-    df_hifd = build_from_hifd(HIFD_ROOT, window_sec=20, step_sec=10)
-    if not df_hifd.empty:
-        print(f"HIFD samples: {len(df_hifd)}")
-        dfs.append(df_hifd)
-    else:
-        print("WARNING: No HIFD data loaded (check CSV).")
-
-    # SisFall
+    # 1) SisFall
     df_sisfall = build_from_sisfall(SISFALL_ROOT, window_sec=20, step_sec=10)
     if not df_sisfall.empty:
         print(f"SisFall samples: {len(df_sisfall)}")
@@ -476,7 +486,7 @@ if __name__ == "__main__":
     else:
         print("WARNING: No SisFall data loaded (check CSV).")
 
-    # ECG MITBIH
+    # 2) ECG MITBIH
     df_ecg = build_from_ecg_mitbih(ECG_ROOT)
     if not df_ecg.empty:
         print(f"ECG MITBIH samples: {len(df_ecg)}")
@@ -484,25 +494,37 @@ if __name__ == "__main__":
     else:
         print("WARNING: No ECG MITBIH data loaded (check CSV).")
 
-    # WEDA-FALL (if available)
-    try:
-        from load_weda import build_from_weda
-        df_weda = build_from_weda(WEDA_ROOT, window_sec=20, step_sec=10, 
-                                  sensor_type='accel', target_fs=125.0)
+    # 3) WEDA-FALL
+    if build_from_weda is None:
+        print("WARNING: WEDA-FALL loader not available (load_weda.py import failed).")
+    else:
+        weda_root = WEDA_ROOT
+        df_weda = build_from_weda(
+            weda_root,
+            window_sec=20,
+            step_sec=10,
+            sensor_type="accel",
+            target_fs=125.0,
+            use_hr=False,
+        )
         if not df_weda.empty:
             print(f"WEDA-FALL samples: {len(df_weda)}")
             dfs.append(df_weda)
         else:
-            print("WARNING: No WEDA-FALL data loaded (run weda_resample.py first to convert to 125Hz).")
-    except ImportError:
-        print("WARNING: WEDA-FALL loader not available (load_weda.py not found).")
-    except Exception as e:
-        print(f"WARNING: Failed to load WEDA-FALL data: {e}")
+            print("WARNING: No WEDA-FALL data loaded (check folders or run weda_resample.py).")
 
-    # Synthetic fallback
+    # 4) Synthetic
     df_synth = build_synthetic_dataset(n_samples=1000)
     print(f"Synthetic samples: {len(df_synth)}")
     dfs.append(df_synth)
+
+    # Optional: HIFD
+    df_hifd = build_from_hifd(HIFD_ROOT, window_sec=20, step_sec=10)
+    if not df_hifd.empty:
+        print(f"HIFD samples: {len(df_hifd)}")
+        dfs.append(df_hifd)
+    else:
+        print("WARNING: No HIFD data loaded (check CSV).")
 
     if not dfs:
         raise RuntimeError("Check dataset paths.")
@@ -513,12 +535,12 @@ if __name__ == "__main__":
     feature_cols = [c for c in df.columns if c not in ["label", "scenario"]]
     X = df[feature_cols].values
     y = df["label"].values
-    
+
     # Check for NaN/inf values
     if np.isnan(X).any() or np.isinf(X).any():
         print("WARNING: Found NaN or Inf values in features. Filling NaN with 0 and Inf with large finite values.")
         X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
-    
+
     # Validate feature consistency
     print(f"Feature columns: {feature_cols}")
     print(f"Feature matrix shape: {X.shape}")
@@ -526,9 +548,8 @@ if __name__ == "__main__":
     print(f"Label distribution: {dict(zip(unique_labels, label_counts))}")
 
     # Check if stratification is possible (requires at least 2 samples per class in each split)
-    # For 20% test split, need at least 5 samples per class total (2 in test, 3 in train)
     can_stratify = len(unique_labels) > 1 and np.min(label_counts) >= 5
-    
+
     if can_stratify:
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, stratify=y, random_state=42
