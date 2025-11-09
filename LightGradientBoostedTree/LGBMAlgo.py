@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report, average_precision_score
 import lightgbm as lgb
 import joblib
 
-HIFD_ROOT   = "data/hifd"  
+# HIFD_ROOT   = "data/hifd"  
 ECG_ROOT    = "data/ecg_mitbih"
 WEDA_ROOT   = "WEDA-FALL-data-source/dataset/125Hz"    
 
@@ -225,97 +225,97 @@ def build_synthetic_dataset(n_samples=1000, window_sec=20, fs_ecg=5, fs_accel=50
     return df
 
 
-# Dataset loading: assumes preprocessed CSVs locally
-def load_hifd_records(data_root):
-    """
-    Scan data_root for CSVs with columns: 'hr', 'ax', 'ay', 'az'
-    Label is inferred from filename: filenames containing 'fall' or 'nearfall'.
-    """
-    records = []
-    if not os.path.isdir(data_root):
-        return records
+# # Dataset loading: assumes preprocessed CSVs locally
+# def load_hifd_records(data_root):
+#     """
+#     Scan data_root for CSVs with columns: 'hr', 'ax', 'ay', 'az'
+#     Label is inferred from filename: filenames containing 'fall' or 'nearfall'.
+#     """
+#     records = []
+#     if not os.path.isdir(data_root):
+#         return records
 
-    csv_paths = glob.glob(os.path.join(data_root, "*.csv"))
-    for path in csv_paths:
-        #error handling
-        try:
-            df = pd.read_csv(path)
-        except Exception as e:
-            print(f"WARNING: Failed to read {path}: {e}")
-            continue
+#     csv_paths = glob.glob(os.path.join(data_root, "*.csv"))
+#     for path in csv_paths:
+#         #error handling
+#         try:
+#             df = pd.read_csv(path)
+#         except Exception as e:
+#             print(f"WARNING: Failed to read {path}: {e}")
+#             continue
 
-        # Expect columns: hr, ax, ay, az (adjust if needed)
-        if not {"hr", "ax", "ay", "az"}.issubset(df.columns):
-            print(f"WARNING: Missing required columns in {path}")
-            continue
+#         # Expect columns: hr, ax, ay, az (adjust if needed)
+#         if not {"hr", "ax", "ay", "az"}.issubset(df.columns):
+#             print(f"WARNING: Missing required columns in {path}")
+#             continue
 
-        hr = df["hr"].values
-        accel = df[["ax", "ay", "az"]].values
+#         hr = df["hr"].values
+#         accel = df[["ax", "ay", "az"]].values
 
-        fname = os.path.basename(path).lower()
-        if "fall" in fname:
-            label_str = "fall"
-        elif "near" in fname:
-            label_str = "near-fall"
-        else:
-            label_str = "adl"
+#         fname = os.path.basename(path).lower()
+#         if "fall" in fname:
+#             label_str = "fall"
+#         elif "near" in fname:
+#             label_str = "near-fall"
+#         else:
+#             label_str = "adl"
 
-        records.append({
-            "hr": hr,
-            "fs_hr": FS_HR_DEFAULT,
-            "accel": accel,
-            "fs_accel": FS_ACCEL_DEFAULT,
-            "label_str": label_str,
-        })
+#         records.append({
+#             "hr": hr,
+#             "fs_hr": FS_HR_DEFAULT,
+#             "accel": accel,
+#             "fs_accel": FS_ACCEL_DEFAULT,
+#             "label_str": label_str,
+#         })
 
-    return records
+#     return records
 
 
-def build_from_hifd(data_root, window_sec=20, step_sec=10):
-    rows = []
-    labels = []
+# def build_from_hifd(data_root, window_sec=20, step_sec=10):
+#     rows = []
+#     labels = []
 
-    records = load_hifd_records(data_root)
-    for rec in records:
-        hr = rec["hr"]
-        fs_hr = rec["fs_hr"]
-        accel = rec["accel"]
-        fs_accel = rec["fs_accel"]
-        label_str = rec["label_str"]
+#     records = load_hifd_records(data_root)
+#     for rec in records:
+#         hr = rec["hr"]
+#         fs_hr = rec["fs_hr"]
+#         accel = rec["accel"]
+#         fs_accel = rec["fs_accel"]
+#         label_str = rec["label_str"]
 
-        n_hr = len(hr)
-        n_acc = len(accel)
-        total_sec = min(n_hr / fs_hr, n_acc / fs_accel)
-        if total_sec < window_sec:
-            continue
+#         n_hr = len(hr)
+#         n_acc = len(accel)
+#         total_sec = min(n_hr / fs_hr, n_acc / fs_accel)
+#         if total_sec < window_sec:
+#             continue
 
-        for start_hr, end_hr in sliding_windows(
-            int(total_sec * fs_hr), window_sec, step_sec, fs_hr
-        ):
-            t0 = start_hr / fs_hr
-            t1 = end_hr / fs_hr
-            start_acc = int(t0 * fs_accel)
-            end_acc = int(t1 * fs_accel)
-            if end_acc > n_acc:
-                break
+#         for start_hr, end_hr in sliding_windows(
+#             int(total_sec * fs_hr), window_sec, step_sec, fs_hr
+#         ):
+#             t0 = start_hr / fs_hr
+#             t1 = end_hr / fs_hr
+#             start_acc = int(t0 * fs_accel)
+#             end_acc = int(t1 * fs_accel)
+#             if end_acc > n_acc:
+#                 break
 
-            hr_window = hr[start_hr:end_hr]
-            accel_window = accel[start_acc:end_acc]
+#             hr_window = hr[start_hr:end_hr]
+#             accel_window = accel[start_acc:end_acc]
 
-            f_ecg = extract_ecg(hr_window, fs_hr)
-            f_acc = extract_accel(accel_window, fs_accel)
+#             f_ecg = extract_ecg(hr_window, fs_hr)
+#             f_acc = extract_accel(accel_window, fs_accel)
 
-            label = 1 if label_str in ["fall", "near-fall"] else 0
-            scen = f"HIFD_{label_str}"
+#             label = 1 if label_str in ["fall", "near-fall"] else 0
+#             scen = f"HIFD_{label_str}"
 
-            row = {**f_ecg, **f_acc, "scenario": scen}
-            rows.append(row)
-            labels.append(label)
+#             row = {**f_ecg, **f_acc, "scenario": scen}
+#             rows.append(row)
+#             labels.append(label)
 
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df["label"] = labels
-    return df
+#     df = pd.DataFrame(rows)
+#     if not df.empty:
+#         df["label"] = labels
+#     return df
 
 # ECG MIT-BIH dataset loading
 def load_ecg_mitbih_rows(data_root):
@@ -404,21 +404,13 @@ except ImportError:
 if __name__ == "__main__":
     dfs = []
 
-    # HIFD
-    df_hifd = build_from_hifd(HIFD_ROOT, window_sec=20, step_sec=10)
-    if not df_hifd.empty:
-        print(f"HIFD samples: {len(df_hifd)}")
-        dfs.append(df_hifd)
-    else:
-        print("WARNING: No HIFD data loaded (check CSV).")
-
-    # SisFall
-    df_sisfall = build_from_sisfall(SISFALL_ROOT, window_sec=20, step_sec=10)
-    if not df_sisfall.empty:
-        print(f"SisFall samples: {len(df_sisfall)}")
-        dfs.append(df_sisfall)
-    else:
-        print("WARNING: No SisFall data loaded (check CSV).")
+    # # HIFD
+    # df_hifd = build_from_hifd(HIFD_ROOT, window_sec=20, step_sec=10)
+    # if not df_hifd.empty:
+    #     print(f"HIFD samples: {len(df_hifd)}")
+    #     dfs.append(df_hifd)
+    # else:
+    #     print("WARNING: No HIFD data loaded (check CSV).")
 
     # ECG MITBIH
     df_ecg = build_from_ecg_mitbih(ECG_ROOT)
@@ -452,13 +444,13 @@ if __name__ == "__main__":
     print(f"Synthetic samples: {len(df_synth)}")
     dfs.append(df_synth)
 
-    # Optional: HIFD
-    df_hifd = build_from_hifd(HIFD_ROOT, window_sec=20, step_sec=10)
-    if not df_hifd.empty:
-        print(f"HIFD samples: {len(df_hifd)}")
-        dfs.append(df_hifd)
-    else:
-        print("WARNING: No HIFD data loaded (check CSV).")
+    # # Optional: HIFD
+    # df_hifd = build_from_hifd(HIFD_ROOT, window_sec=20, step_sec=10)
+    # if not df_hifd.empty:
+    #     print(f"HIFD samples: {len(df_hifd)}")
+    #     dfs.append(df_hifd)
+    # else:
+    #     print("WARNING: No HIFD data loaded (check CSV).")
 
     if not dfs:
         raise RuntimeError("Check dataset paths.")
