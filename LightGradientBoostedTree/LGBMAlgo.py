@@ -486,6 +486,8 @@ if __name__ == "__main__":
             X, y, test_size=0.2, random_state=42
         )
 
+    '''
+    DEBUG
     # Baseline: Logistic Regression
     lr = LogisticRegression(max_iter=1000, class_weight="balanced")
     lr.fit(X_train, y_train)
@@ -494,12 +496,14 @@ if __name__ == "__main__":
     print("\nLogistic baseline report:")
     print(classification_report(y_test, y_pred_lr))
 
-    # Gradient Boosted Trees (LightGBM)
+    '''
     lgbm = lgb.LGBMClassifier(
-        n_estimators=200,
+        n_estimators=400,
         num_leaves=31,
-        learning_rate=0.05,
-        class_weight="balanced",
+        learning_rate=0.07,
+        # class_weight="balanced",
+        #data set is unbalanced and performs worse on class 1
+        is_unbalance=True,
         random_state=42,
     )
     lgbm.fit(X_train, y_train)
@@ -510,10 +514,11 @@ if __name__ == "__main__":
     print(classification_report(y_test, y_pred_lgbm))
 
     # Precision-recall summary
-    ap_lr = average_precision_score(y_test, y_scores_lr)
+    #DEBUG: ap_lr = average_precision_score(y_test, y_scores_lr)
     ap_lgbm = average_precision_score(y_test, y_scores_lgbm)
-    print(f"Average precision LR: {ap_lr:.3f}, LGBM: {ap_lgbm:.3f}")
-
+    #DEBUG: print(f"Average precision LR: {ap_lr:.3f}, LGBM: {ap_lgbm:.3f}")
+    print(f"Average precision LGBM: {ap_lgbm:.3f}")
+        
     # Save model + feature list for deployment
     joblib.dump({"model": lgbm, "features": feature_cols}, "sos_gbt_model.joblib")
     print("Saved model to sos_gbt_model.joblib")
