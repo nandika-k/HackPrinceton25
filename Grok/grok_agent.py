@@ -15,7 +15,7 @@ from sos_training import extract_ecg, extract_acc, compute_hazard_weighted_risk
 MODEL_PATH = "sos_gbt_model.joblib"
 
 GROK_API_URL = "https://api.x.ai/v1/chat/completions"  # update to actual endpoint
-GROK_API_KEY = "YOUR_GROK_KEY_HERE"
+GROK_API_KEY = "Ygsk_BB9HKfUGjJr3XFnfMXe4WGdyb3FYtwyPQw3Jnhw12MOL1KLtcsSr"
 
 HAZARD_API_URL = "https://your-hazard-api.example.com/alerts"  # update
 FIRST_RESPONDER_WEBHOOK_URL = "https://your-backend.example.com/first_responders"
