@@ -9,13 +9,7 @@ import pandas as pd
 from pathlib import Path
 
 # Import feature extraction functions from LGBMAlgo
-from LGBMAlgo import (
-    extract_ecg,
-    extract_acc as extract_accel,
-    sliding_windows,
-    HR_FS as FS_HR_DEFAULT,
-    ACC_FS as FS_ACCEL_DEFAULT,
-)
+from LGBMAlgo import extract_ecg, extract_accel, sliding_windows, FS_HR_DEFAULT, FS_ACCEL_DEFAULT
 
 
 def load_weda_records(data_root, sensor_type='accel', target_fs=125.0):
