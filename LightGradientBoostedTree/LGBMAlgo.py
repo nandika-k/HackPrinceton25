@@ -9,6 +9,11 @@ from sklearn.metrics import classification_report, average_precision_score
 import lightgbm as lgb
 import joblib
 
+try:
+    from geo_features import GeoFeatureEngineer, enrich_dataframe_with_geo
+except ImportError:  # pragma: no cover
+    from LightGradientBoostedTree.geo_features import GeoFeatureEngineer, enrich_dataframe_with_geo  # type: ignore
+
 # HIFD_ROOT   = "data/hifd"  
 ECG_ROOT    = "data/ecg_mitbih"
 WEDA_ROOT   = "WEDA-FALL-data-source/dataset/125Hz"    
@@ -402,6 +407,7 @@ except ImportError:
 
 # Training and evaluation
 if __name__ == "__main__":
+    geo_engineer = GeoFeatureEngineer()
     dfs = []
 
     # # HIFD
@@ -415,6 +421,7 @@ if __name__ == "__main__":
     # ECG MITBIH
     df_ecg = build_from_ecg_mitbih(ECG_ROOT)
     if not df_ecg.empty:
+        df_ecg = enrich_dataframe_with_geo(df_ecg, geo_engineer, random_seed=101)
         print(f"ECG MITBIH samples: {len(df_ecg)}")
         dfs.append(df_ecg)
     else:
@@ -434,6 +441,7 @@ if __name__ == "__main__":
             use_hr=False,
         )
         if not df_weda.empty:
+            df_weda = enrich_dataframe_with_geo(df_weda, geo_engineer, random_seed=211)
             print(f"WEDA-FALL samples: {len(df_weda)}")
             dfs.append(df_weda)
         else:
@@ -441,6 +449,7 @@ if __name__ == "__main__":
 
     # 4) Synthetic
     df_synth = build_synthetic_dataset(n_samples=1000)
+    df_synth = enrich_dataframe_with_geo(df_synth, geo_engineer, random_seed=907)
     print(f"Synthetic samples: {len(df_synth)}")
     dfs.append(df_synth)
 
@@ -458,9 +467,11 @@ if __name__ == "__main__":
     df = pd.concat(dfs, ignore_index=True)
     print(f"Total samples: {len(df)}")
 
-    feature_cols = [c for c in df.columns if c not in ["label", "scenario"]]
+    exclude_cols = {"label", "scenario", "geo_alert_weight"}
+    feature_cols = [c for c in df.columns if c not in exclude_cols]
     X = df[feature_cols].values
     y = df["label"].values
+    sample_weight_vector = df["geo_alert_weight"].fillna(1.0).values if "geo_alert_weight" in df.columns else None
 
     # Check for NaN/inf values
     if np.isnan(X).any() or np.isinf(X).any():
@@ -476,15 +487,29 @@ if __name__ == "__main__":
     # Check if stratification is possible (requires at least 2 samples per class in each split)
     can_stratify = len(unique_labels) > 1 and np.min(label_counts) >= 5
 
-    if can_stratify:
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, stratify=y, random_state=42
-        )
+    w_train = None
+    w_test = None
+
+    if sample_weight_vector is not None:
+        if can_stratify:
+            X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
+                X, y, sample_weight_vector, test_size=0.2, stratify=y, random_state=42
+            )
+        else:
+            print("WARNING: Cannot stratify split (insufficient samples per class), using random split")
+            X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(
+                X, y, sample_weight_vector, test_size=0.2, random_state=42
+            )
     else:
-        print("WARNING: Cannot stratify split (insufficient samples per class), using random split")
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+        if can_stratify:
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, stratify=y, random_state=42
+            )
+        else:
+            print("WARNING: Cannot stratify split (insufficient samples per class), using random split")
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42
+            )
 
     '''
     DEBUG
@@ -506,7 +531,11 @@ if __name__ == "__main__":
         is_unbalance=True,
         random_state=42,
     )
-    lgbm.fit(X_train, y_train)
+    fit_kwargs = {}
+    if w_train is not None:
+        fit_kwargs["sample_weight"] = w_train
+
+    lgbm.fit(X_train, y_train, **fit_kwargs)
     y_pred_lgbm = lgbm.predict(X_test)
     y_scores_lgbm = lgbm.predict_proba(X_test)[:, 1]
 
@@ -520,5 +549,11 @@ if __name__ == "__main__":
     print(f"Average precision LGBM: {ap_lgbm:.3f}")
         
     # Save model + feature list for deployment
-    joblib.dump({"model": lgbm, "features": feature_cols}, "sos_gbt_model.joblib")
+    model_bundle = {
+        "model": lgbm,
+        "features": feature_cols,
+        "geo_feature_defaults": geo_engineer.get_feature_defaults(),
+        "geo_feature_names": GeoFeatureEngineer.FEATURE_NAMES,
+    }
+    joblib.dump(model_bundle, "sos_gbt_model.joblib")
     print("Saved model to sos_gbt_model.joblib")
