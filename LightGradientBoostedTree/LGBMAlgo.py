@@ -404,7 +404,23 @@ except ImportError:
 if __name__ == "__main__":
     dfs = []
 
-    # 2) ECG MITBIH
+    # HIFD
+    df_hifd = build_from_hifd(HIFD_ROOT, window_sec=20, step_sec=10)
+    if not df_hifd.empty:
+        print(f"HIFD samples: {len(df_hifd)}")
+        dfs.append(df_hifd)
+    else:
+        print("WARNING: No HIFD data loaded (check CSV).")
+
+    # SisFall
+    df_sisfall = build_from_sisfall(SISFALL_ROOT, window_sec=20, step_sec=10)
+    if not df_sisfall.empty:
+        print(f"SisFall samples: {len(df_sisfall)}")
+        dfs.append(df_sisfall)
+    else:
+        print("WARNING: No SisFall data loaded (check CSV).")
+
+    # ECG MITBIH
     df_ecg = build_from_ecg_mitbih(ECG_ROOT)
     if not df_ecg.empty:
         print(f"ECG MITBIH samples: {len(df_ecg)}")
