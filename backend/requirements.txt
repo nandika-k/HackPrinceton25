@@ -1,0 +1,21 @@
+# --- PulseGuard backend requirements ---
+# Web server + realtime sockets
+Flask
+Flask-SocketIO
+eventlet
+flask-cors
+
+# Core scientific/ML stack
+numpy
+pandas
+scikit-learn
+lightgbm
+joblib
+
+# I/O and HTTP
+pyserial
+requests
+
+# (Optional) LLM fallback used in LGBMAlgo.py
+# Comment out if not needed
+anthropic

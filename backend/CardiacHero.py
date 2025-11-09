@@ -11,7 +11,7 @@ from collections import deque
 import time
 
 # 配置参数
-SERIAL_PORT = '/dev/tty.usbmodem21101'  # 根据你的实际端口修改（Windows: COM3, Mac: /dev/tty.usbmodem*, Linux: /dev/ttyACM0）
+SERIAL_PORT = '/dev/tty.usbmodem11101'  # 根据你的实际端口修改（Windows: COM3, Mac: /dev/tty.usbmodem*, Linux: /dev/ttyACM0）
 BAUD_RATE = 9600
 SAMPLE_RATE = 125  # Hz
 WINDOW_SIZE = 500  # 显示最近 500 个点（约 4 秒）

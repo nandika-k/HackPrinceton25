@@ -35,8 +35,8 @@ export default function LiveECGChart({ ecg }) {
   animation: false,
   scales: {
     y: {
-      min: -400,
-      max: 400,
+      min: -2,
+      max: 2,
       grid: {
         color: 'rgba(255, 64, 78, 0.1)', // subtle white gridlines
         lineWidth: 1,
@@ -46,13 +46,13 @@ export default function LiveECGChart({ ecg }) {
       },
     },
     x: {
-  display: true,
+  display: false,
   grid: {
-    color: 'rgba(255, 255, 255, 0.05)',
+    color: 'rgba(255, 255, 255, 0.05)', 
     lineWidth: 1,
   },
   ticks: {
-    color: 'rgba(255,255,255,0.3)',
+    color: 'rgba(255,255,255,0.3)', 
   },
 },
   },

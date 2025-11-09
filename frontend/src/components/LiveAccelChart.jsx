@@ -33,7 +33,7 @@ export default function LiveAccelChart({ ax, ay, az }) {
         borderColor: "#FFA500", // orange
         borderWidth: 1.5,
         pointRadius: 0,
-        tension: 0.2,
+        tension: 0,
       },
       {
         label: "Accel Y",
@@ -41,7 +41,7 @@ export default function LiveAccelChart({ ax, ay, az }) {
         borderColor: "#00CED1", // turquoise
         borderWidth: 1.5,
         pointRadius: 0,
-        tension: 0.2,
+        tension: 0,
       },
       {
         label: "Accel Z",
@@ -49,7 +49,7 @@ export default function LiveAccelChart({ ax, ay, az }) {
         borderColor: "#ADFF2F", // green-yellow
         borderWidth: 1.5,
         pointRadius: 0,
-        tension: 0.2,
+        tension: 0,
       },
     ],
   };
@@ -59,8 +59,8 @@ export default function LiveAccelChart({ ax, ay, az }) {
     animation: false,
     scales: {
       y: {
-        min: -2,
-        max: 2,
+        min: -0.1,
+        max: 0.1,
         grid: {
           color: "rgba(255,255,255,0.05)",
         },
@@ -69,10 +69,10 @@ export default function LiveAccelChart({ ax, ay, az }) {
         },
       },
       x: {
-        display: true,
+        display: false,
         grid: {
             color: "rgba(255,255,255,0.05)",
-          display: true,
+          display: false,
         },
       },
     },
