@@ -9,14 +9,17 @@ from sklearn.metrics import classification_report, average_precision_score
 import lightgbm as lgb
 import joblib
 
-HIFD_ROOT   = "data/hifd"          
-SISFALL_ROOT = "data/sisfall"      
+HIFD_ROOT   = "data/hifd"  
 ECG_ROOT    = "data/ecg_mitbih"
 WEDA_ROOT   = "WEDA-FALL-data-source/dataset/125Hz"    
 
 # Default sampling rates (adjust to match preprocessing)
 FS_HR_DEFAULT     = 125    # 125 Hz HR (or HR-derived samples)
 FS_ACCEL_DEFAULT  = 125   #125 Hz accelerometer
+
+# Aliases for newer naming convention
+HR_FS = FS_HR_DEFAULT
+ACC_FS = FS_ACCEL_DEFAULT
 
 #Feature extraction block
 def extract_ecg(ecg_signal, fs):
@@ -123,6 +126,13 @@ def extract_accel(accel_xyz, fs):
         "stillness_duration": stillness_duration,
         "post_impact_still_flag": post_impact_still_flag,
     }
+
+
+def extract_acc(accel_xyz, fs):
+    """
+    Alias to maintain compatibility with modules importing extract_acc.
+    """
+    return extract_accel(accel_xyz, fs)
 
 
 def sliding_windows(sig_len, window_sec, step_sec, fs):
@@ -307,79 +317,6 @@ def build_from_hifd(data_root, window_sec=20, step_sec=10):
         df["label"] = labels
     return df
 
-
-def load_sisfall_segments(data_root):
-    records = []
-    if not os.path.isdir(data_root):
-        return records
-
-    csv_paths = glob.glob(os.path.join(data_root, "*.csv"))
-    for path in csv_paths:
-        try:
-            df = pd.read_csv(path)
-        except Exception as e:
-            print(f"WARNING: Failed to read {path}: {e}")
-            continue
-        if not {"ax", "ay", "az"}.issubset(df.columns):
-            print(f"WARNING: Missing required columns in {path}")
-            continue
-
-        accel = df[["ax", "ay", "az"]].values
-        fname = os.path.basename(path).lower()
-        if fname.startswith("f") or "fall" in fname:
-            label_str = "FALL"
-        else:
-            label_str = "ADL"
-
-        records.append({
-            "accel": accel,
-            "fs_accel": FS_ACCEL_DEFAULT,
-            "label_str": label_str,
-        })
-
-    return records
-
-
-def build_from_sisfall(data_root, window_sec=20, step_sec=10):
-    rows = []
-    labels = []
-
-    records = load_sisfall_segments(data_root)
-    for rec in records:
-        accel = rec["accel"]
-        fs_accel = rec["fs_accel"]
-        label_str = rec["label_str"]
-        n_acc = len(accel)
-        if n_acc < window_sec * fs_accel:
-            continue
-
-        for start_acc, end_acc in sliding_windows(
-            n_acc, window_sec, step_sec, fs_accel
-        ):
-            accel_window = accel[start_acc:end_acc]
-
-            # Neutral ECG placeholders
-            f_ecg = {
-                "hr_mean": 80.0,
-                "hr_std": 5.0,
-                "hr_range": 15.0,
-                "hr_slope": 0.0,
-                "hrv_proxy": 2.0,
-            }
-            f_acc = extract_accel(accel_window, fs_accel)
-
-            label = 1 if label_str.lower().startswith("f") else 0
-            scen = f"SisFall_{label_str}"
-
-            row = {**f_ecg, **f_acc, "scenario": scen}
-            rows.append(row)
-            labels.append(label)
-
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df["label"] = labels
-    return df
-
 # ECG MIT-BIH dataset loading
 def load_ecg_mitbih_rows(data_root):
     """    Expects last column as label (0 = normal, >0 = arrhythmia).
@@ -456,27 +393,18 @@ def build_from_ecg_mitbih(data_root):
     return df
 
 
+# WEDA loader import (placed after function definitions to avoid circular import issues)
+try:
+    from load_weda import build_from_weda
+except ImportError:
+    build_from_weda = None
+
+
 # Training and evaluation
 if __name__ == "__main__":
     dfs = []
 
-    # HIFD
-    df_hifd = build_from_hifd(HIFD_ROOT, window_sec=20, step_sec=10)
-    if not df_hifd.empty:
-        print(f"HIFD samples: {len(df_hifd)}")
-        dfs.append(df_hifd)
-    else:
-        print("WARNING: No HIFD data loaded (check CSV).")
-
-    # SisFall
-    df_sisfall = build_from_sisfall(SISFALL_ROOT, window_sec=20, step_sec=10)
-    if not df_sisfall.empty:
-        print(f"SisFall samples: {len(df_sisfall)}")
-        dfs.append(df_sisfall)
-    else:
-        print("WARNING: No SisFall data loaded (check CSV).")
-
-    # ECG MITBIH
+    # 2) ECG MITBIH
     df_ecg = build_from_ecg_mitbih(ECG_ROOT)
     if not df_ecg.empty:
         print(f"ECG MITBIH samples: {len(df_ecg)}")
@@ -484,25 +412,37 @@ if __name__ == "__main__":
     else:
         print("WARNING: No ECG MITBIH data loaded (check CSV).")
 
-    # WEDA-FALL (if available)
-    try:
-        from load_weda import build_from_weda
-        df_weda = build_from_weda(WEDA_ROOT, window_sec=20, step_sec=10, 
-                                  sensor_type='accel', target_fs=125.0)
+    # 3) WEDA-FALL
+    if build_from_weda is None:
+        print("WARNING: WEDA-FALL loader not available (load_weda.py import failed).")
+    else:
+        weda_root = WEDA_ROOT
+        df_weda = build_from_weda(
+            weda_root,
+            window_sec=20,
+            step_sec=10,
+            sensor_type="accel",
+            target_fs=125.0,
+            use_hr=False,
+        )
         if not df_weda.empty:
             print(f"WEDA-FALL samples: {len(df_weda)}")
             dfs.append(df_weda)
         else:
-            print("WARNING: No WEDA-FALL data loaded (run weda_resample.py first to convert to 125Hz).")
-    except ImportError:
-        print("WARNING: WEDA-FALL loader not available (load_weda.py not found).")
-    except Exception as e:
-        print(f"WARNING: Failed to load WEDA-FALL data: {e}")
+            print("WARNING: No WEDA-FALL data loaded (check folders or run weda_resample.py).")
 
-    # Synthetic fallback
+    # 4) Synthetic
     df_synth = build_synthetic_dataset(n_samples=1000)
     print(f"Synthetic samples: {len(df_synth)}")
     dfs.append(df_synth)
+
+    # Optional: HIFD
+    df_hifd = build_from_hifd(HIFD_ROOT, window_sec=20, step_sec=10)
+    if not df_hifd.empty:
+        print(f"HIFD samples: {len(df_hifd)}")
+        dfs.append(df_hifd)
+    else:
+        print("WARNING: No HIFD data loaded (check CSV).")
 
     if not dfs:
         raise RuntimeError("Check dataset paths.")
@@ -513,12 +453,12 @@ if __name__ == "__main__":
     feature_cols = [c for c in df.columns if c not in ["label", "scenario"]]
     X = df[feature_cols].values
     y = df["label"].values
-    
+
     # Check for NaN/inf values
     if np.isnan(X).any() or np.isinf(X).any():
         print("WARNING: Found NaN or Inf values in features. Filling NaN with 0 and Inf with large finite values.")
         X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
-    
+
     # Validate feature consistency
     print(f"Feature columns: {feature_cols}")
     print(f"Feature matrix shape: {X.shape}")
@@ -526,9 +466,8 @@ if __name__ == "__main__":
     print(f"Label distribution: {dict(zip(unique_labels, label_counts))}")
 
     # Check if stratification is possible (requires at least 2 samples per class in each split)
-    # For 20% test split, need at least 5 samples per class total (2 in test, 3 in train)
     can_stratify = len(unique_labels) > 1 and np.min(label_counts) >= 5
-    
+
     if can_stratify:
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, stratify=y, random_state=42

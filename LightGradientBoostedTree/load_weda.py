@@ -7,6 +7,7 @@ import glob
 import numpy as np
 import pandas as pd
 from pathlib import Path
+import shutil
 
 # Import feature extraction functions from LGBMAlgo
 from LGBMAlgo import extract_ecg, extract_accel, sliding_windows, FS_HR_DEFAULT, FS_ACCEL_DEFAULT
@@ -208,13 +209,45 @@ def build_from_weda(data_root, window_sec=20, step_sec=10, sensor_type='accel',
 
 # Example usage in main training script
 if __name__ == "__main__":
-    # Example: Load WEDA-FALL data
-    weda_root = "WEDA-FALL-data-source/dataset/125Hz"
-    
+    # Destination in the repo where 125Hz data should live
+    dest_root = os.path.join("data", "WEDA-FALL-data", "125Hz")
+    # Common source path produced by the resampling script
+    src_root = os.path.join("WEDA-FALL-data-source", "dataset", "125Hz")
+
+    def copy_weda_125hz(source_root, dest_root):
+        """Copy 125Hz CSV files from source_root into dest_root.
+
+        If dest_root already exists and contains files, copying is skipped.
+        """
+        if not os.path.isdir(source_root):
+            return False
+
+        os.makedirs(dest_root, exist_ok=True)
+        csv_paths = glob.glob(os.path.join(source_root, "**", "*.csv"), recursive=True)
+        for p in csv_paths:
+            rel = os.path.relpath(p, source_root)
+            dest_p = os.path.join(dest_root, rel)
+            os.makedirs(os.path.dirname(dest_p), exist_ok=True)
+            shutil.copy2(p, dest_p)
+        return True
+
+    # Prefer the data stored under repo/data/WEDA-FALL-data/125Hz
+    if os.path.isdir(dest_root) and any(os.scandir(dest_root)):
+        weda_root = dest_root
+    elif os.path.isdir(src_root):
+        print(f"Found source 125Hz data at {src_root}. Copying into {dest_root}...")
+        copied = copy_weda_125hz(src_root, dest_root)
+        if copied:
+            weda_root = dest_root
+        else:
+            weda_root = src_root
+    else:
+        weda_root = dest_root
+
     if os.path.isdir(weda_root):
         df_weda = build_from_weda(weda_root, window_sec=20, step_sec=10, 
                                   sensor_type='accel', target_fs=125.0)
-        
+
         if not df_weda.empty:
             print(f"WEDA-FALL samples: {len(df_weda)}")
             print(f"Feature columns: {df_weda.columns.tolist()}")
@@ -223,5 +256,5 @@ if __name__ == "__main__":
             print("WARNING: No WEDA-FALL data loaded")
     else:
         print(f"WARNING: WEDA-FALL 125Hz directory not found: {weda_root}")
-        print("Please run weda_resample.py first to convert data to 125Hz")
+        print("Please run weda_resample.py first to convert data to 125Hz, or place the 125Hz CSVs under data/WEDA-FALL-data/125Hz")
 
